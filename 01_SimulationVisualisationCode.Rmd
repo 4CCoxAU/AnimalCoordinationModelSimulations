@@ -1,0 +1,894 @@
+---
+title: "SimulationVisualisationCode"
+author: "Chris Cox"
+date: "2026-04-09"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load necessary packages:
+```{r}
+pacman::p_load(ggplot2, 
+               dplyr, 
+               cowplot,
+               abcrf,
+               here,
+               tidyr,
+               latex2exp,
+               diptest)
+```
+
+# Source model simulation functions
+
+```{r}
+source(here("SimulationFunctions/01_eventtriggered.R"))
+source(here("SimulationFunctions/02_tempotracking.R"))
+source(here("SimulationFunctions/03_statedependent.R"))
+source(here("CustomFunctions/functions.R"))
+```
+
+
+# Run simulations
+
+```{r}
+set.seed(23)
+
+sim1 <- simulate_event_triggered(
+  duration = 1000, T1 = 1.0, T2 = 1.0,
+  rho = 0.75, d_call = 0.2, noise_sd = 0.2, duration_noise_sd = 0.1)
+
+sim2 <- simulate_coupled_oscillator(
+  duration = 1000, freq1_init = 0.8, freq2_init = 1.2,
+  K = -0.1, epsilon = 0.05, dt = 0.01,
+  phase_noise_sd = 0.08, freq_noise_sd = 0.001,
+  d_call = 0.2, duration_noise_sd = 0.1, ici_noise_sd = 0.05,
+  initial_phase_diff = 0.3 * pi
+)
+
+sim3 <- simulate_state_dependent(
+  duration = 1000, lambda_active = 1.0, lambda_listening = 0.05,
+  lambda_refractory = 0.001,
+  p_active_to_listening_base = 0.002, p_listening_to_active_base = 0.02,
+  p_active_to_listening_partner = 0.3, p_listening_to_active_partner = 0.005,
+  refrac_dur = 0.3, partner_window = 0.5,
+  d_call = 0.2, duration_noise_sd = 0.1, dt = 0.01
+)
+```
+
+# Mechanistically Distinct Coordination Strategies (Figure 1)
+
+## Row 1, Timeline Plots
+
+```{r}
+timeline1 <- make_timeline(sim1, time = " ")
+timeline2 <- make_timeline(sim2, l_position = "none")
+timeline3 <- make_timeline(sim3, l_position = "none", time = " ")
+
+timeline_row <- cowplot::plot_grid(timeline1, NULL,
+                                   timeline2, NULL,
+                                   timeline3, NULL,
+                                   ncol = 6,
+                                   rel_widths = c(0.3, 0.05, 0.3, 0.05, 0.3, 0.05))
+```
+
+## Row 2, Inter-Call Interval Histograms
+
+```{r}
+ici1 <- make_ici(sim1, bins = 30, toggle_x = " ",
+                 x_lower_lim = 0, x_upper = 4, breaks = 1)
+
+ici2 <- make_ici(sim2, , bins = 20, x_upper_lim = 1.5, x_lower_lim = 0.5, breaks = 0.5)
+
+ici3 <- make_ici(sim3, bins = 30, toggle_x = " ", breaks = 1, x_upper = 10)
+
+ici_row <- cowplot::plot_grid(ici1, NULL,
+                              ici2, NULL,
+                              ici3, NULL,
+                              ncol = 6,
+                              rel_widths = c(0.3, 0.05, 0.3, 0.05, 0.3, 0.05))
+ici_row
+```
+
+## Row 3, Phase Dynamics Plots
+
+```{r}
+diag1 <- make_phase_dynamics_m1(sim1, window)
+diag2 <- make_phase_dynamics_m2(sim2, window)
+diag3 <- make_phase_dynamics_m3(sim3, window)
+
+diag_row <- cowplot::plot_grid(diag1, NULL,
+                               diag2, NULL,
+                               diag3, NULL,
+                               ncol = 6,
+                               rel_widths = c(0.3, 0.05, 0.3, 0.05, 0.3, 0.05))
+```
+
+## Assemble Figure 1
+
+```{r}
+main_rows <- cowplot::plot_grid(
+  timeline_row,
+  NULL,
+  ici_row,
+  NULL,
+  diag_row,
+  NULL,
+  ncol = 1,
+  rel_heights = c(0.3, 0.05, 0.3, 0.05, 0.3, 0.03)
+)
+
+full_figure <- cowplot::plot_grid(
+  header_row,
+  cowplot::plot_grid(row_labels, main_rows, ncol = 2, rel_widths = c(0.05, 0.95)),
+  ncol = 1,
+  rel_heights = c(0.03, 0.88)
+)
+
+full_figure
+
+# Save outputs
+#ggsave("figure_combined.png", full_figure, width = 14.1, height = 10, dpi = 300, bg = "white")
+#ggsave(file = "figure_combined.pdf", plot = full_figure, width = 14, height = 15, bg = "white")
+#ggsave("figure_combined.tiff", full_figure, width = 14.1, height = 10, dpi = 300, bg = "white")
+```
+
+# Cross-Taxonomic Distribution of Models (Figure 2)
+
+```{r}
+tax_full <- read.csv(here('tax_full.csv')) %>%
+  mutate(model = factor(model, levels = c("State-Dependent", "Tempo-Tracking", "Event-Triggered"))) %>%
+  mutate(taxon = factor(taxon, levels = c("Orthoptera", "Anurans", "Aves", "Primates", "Cetaceans", "Pinnipeds", "Herpestids")))
+
+
+p_tax <- ggplot(tax_full, aes(x = taxon, y = model, fill = n)) +
+  geom_tile(color = "white", linewidth = 1.5) +
+  geom_text(aes(
+    label = ifelse(n > 0, as.character(n), ""),
+    color = ifelse(n >= 3, "white", "black")   # inside aes()
+  ),
+  size = 10, fontface = "bold") +
+  scale_color_identity() +   # tells ggplot to use the colour values literally
+  scale_fill_gradient(
+    low    = "#EFF3FF",
+    high   = "#08306B",
+    name   = "Studies (N)",
+    breaks = c(0, 3, 6, 9),
+    labels = c("0", "3", "6", "9"),
+    limits = c(0, 9),
+    guide  = guide_colorbar(
+      barwidth       = 1.5,
+      barheight      = 15,
+      ticks          = FALSE,
+      title.position = "top",
+      title.hjust    = 0.5,
+      label.hjust    = 0
+    )
+  ) +
+  scale_x_discrete(position = "bottom") +
+  coord_fixed() +
+  labs(
+    x     = "Taxonomic Group",
+    y     = "Model Type",
+    #title = "Cross-Taxonomic Distribution of Formal Coordination Models"
+  ) +
+  theme_minimal(base_size = 13, base_family = "Helvetica") +
+  theme(
+    plot.title   = element_text(face = "bold", size = 20, hjust = 0.5, color = "black"),
+    axis.text.x  = element_text(face = "bold", size = 15, color = "black"),
+    axis.text.y  = element_text(face = "bold", size = 15, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 15, color = "black"),
+    axis.title.x = element_text(face = "bold", size = 15, color = "black", margin = margin(t = 15)),
+    panel.grid   = element_blank(),
+    legend.position = "right",
+    legend.title = element_text(size = 16, face = "bold"),  # Bigger title
+    legend.text = element_text(size = 15),  # Bigger numbers
+  )
+
+p_tax_title <- make_panel_title("Cross-Taxonomic Distribution of Formal Coordination Models")
+
+heatmap_studies <- plot_grid(
+  p_tax_title, 
+  p_tax, 
+  ncol = 1,
+  rel_heights = c(0.08, 0.93))
+
+heatmap_studies
+
+#ggsave(plot = heatmap_studies, file = here('heatmap_studies.pdf'), height = 5, width = 15.5)
+#ggsave(plot = heatmap_studies, file = here('heatmap_studies.tiff'), height = 5, width = 15.5)
+#ggsave(plot = heatmap_studies, file = here('heatmap_studies.png'), height = 5, width = 15.5)
+```
+
+# Model Comparison (Figure 3)
+
+```{r}
+# ABC Model Selection + Posterior Predictive
+
+# What this code block does:
+# 1. Simulate reference datasets from each model with random parameters
+#    (this is the "prior predictive", exploring what each model can produce)
+# 2. Compute 8 summary statistics for each simulated dataset
+# 3. Train a random forest (abcrf) to classify which model generated each dataset
+# 4. Apply to observed data to get posterior model probabilities
+# 5. Find closest reference simulations to observed data (rejection ABC)
+# 6. Resimulate from those parameters to get posterior predictive distributions
+
+stat_names <- c("mean_ici", "sd_ici", "bimod", "prop_short", "dip", "phase_dist", "phase_var", "phase_acf1")
+```
+
+## Step 1: Compute observed statistics
+
+```{r}
+# Function takes call times from two individuals, returns 8 statistics
+obs_event <- compute_8_stats(sim1$voc_times_1, sim1$voc_times_2)
+obs_tempo  <- compute_8_stats(sim2$voc_times_1, sim2$voc_times_2)
+obs_state  <- compute_8_stats(sim3$voc_times_1, sim3$voc_times_2)
+
+df_obs <- rbind(event = obs_event, tempo = obs_tempo, state = obs_state)
+
+colnames(df_obs) <- stat_names
+
+print(round(df_obs, 3))
+```
+
+## Step 2: Build reference table
+
+```{r}
+# For each model: sample random parameters from prior, simulate,
+# compute statistics, store parameters + statistics
+
+n_sim <- 500   # simulations per model
+dur   <- 1000    # simulation duration in seconds
+
+model_labels <- character(0) # storage for abcrf, model labels
+stats_matrix <- matrix(NA, nrow = 0, ncol = 8) # storage for abcrf, statistics
+```
+
+### Event-Triggered
+
+```{r}
+csv_event <- "ref_tables/ref_event.csv"
+
+# --- Event-Triggered ---
+for (i in 1:n_sim) {
+  T      <- runif(1, 0.5, 2.0)
+  rho    <- runif(1, 0.3, 0.95)
+  d_call <- runif(1, 0.05, 0.5)
+
+  # Theory-informed prior from Greenfield (1994):
+  # skip parameter combinations where the two ICI modes overlap,
+  # and cap noise so bimodality is preserved in the output.
+  mode_gap <- 2 * (d_call + rho * T) - T
+  if (mode_gap < 0.2) next
+  noise_sd <- runif(1, 0.01, mode_gap / 4)
+
+  sim <- simulate_event_triggered(
+    duration = dur, T1 = T, T2 = T,
+    rho = rho, d_call = d_call,
+    noise_sd = noise_sd, duration_noise_sd = noise_sd
+  )
+  stats <- compute_8_stats(sim$voc_times_1, sim$voc_times_2)
+
+  if (!any(is.na(stats))) {
+    row <- data.frame(
+      T=T, rho=rho, d_call=d_call, noise_sd=noise_sd,
+      s1=stats[1], s2=stats[2], s3=stats[3], s4=stats[4],
+      s5=stats[5], s6=stats[6], s7=stats[7], s8=stats[8]
+    )
+    write_or_append(row, csv_event)
+    model_labels <- c(model_labels, "Event-Triggered")
+    stats_matrix <- rbind(stats_matrix, stats)
+  }
+}
+
+# --- Event-Triggered ---
+for (i in 1:n_sim) {
+  T        <- runif(1, 0.5, 2.0)
+  rho      <- runif(1, 0.3, 0.95)
+  d_call   <- runif(1, 0.05, 0.5)
+  noise_sd <- runif(1, 0.01, 0.15)
+
+  sim <- simulate_event_triggered(
+    duration = dur, T1 = T, T2 = T,
+    rho = rho, d_call = d_call,
+    noise_sd = noise_sd, duration_noise_sd = noise_sd
+  )
+  stats <- compute_8_stats(sim$voc_times_1, sim$voc_times_2)
+
+  if (!any(is.na(stats))) {
+    row <- data.frame(
+      T=T, rho=rho, d_call=d_call, noise_sd=noise_sd,
+      s1=stats[1], s2=stats[2], s3=stats[3], s4=stats[4],
+      s5=stats[5], s6=stats[6], s7=stats[7], s8=stats[8]
+    )
+    write_or_append(row, csv_event)
+    model_labels <- c(model_labels, "Event-Triggered")
+    stats_matrix <- rbind(stats_matrix, stats)
+  }
+}
+
+ref_event <- read.csv(csv_event)
+```
+
+### Tempo-Tracking
+
+```{r}
+csv_tempo <- "ref_tables/ref_tempo.csv"
+
+# --- Tempo-Tracking ---
+for (i in 1:n_sim) {
+  K              <- runif(1, 0.01, 0.2)
+  epsilon        <- runif(1, 0.01, 0.2)
+  freq1          <- runif(1, 0.5, 2.0)
+  freq2          <- runif(1, 0.5, 2.0)
+  phase_noise_sd <- runif(1, 0.01, 0.2)
+
+  sim <- simulate_coupled_oscillator(
+    duration = dur, freq1_init = freq1, freq2_init = freq2,
+    K = -K, epsilon = epsilon, dt = 0.02,
+    phase_noise_sd = phase_noise_sd, freq_noise_sd = 0.001,
+    d_call = 0.2, duration_noise_sd = 0.1, ici_noise_sd = 0.05,
+    initial_phase_diff = runif(1, 0, pi)
+  )
+  stats <- compute_8_stats(sim$voc_times_1, sim$voc_times_2)
+
+  if (!any(is.na(stats))) {
+    row <- data.frame(
+      K=K, epsilon=epsilon, freq1=freq1, freq2=freq2,
+      phase_noise_sd=phase_noise_sd,
+      s1=stats[1], s2=stats[2], s3=stats[3], s4=stats[4],
+      s5=stats[5], s6=stats[6], s7=stats[7], s8=stats[8]
+    )
+    write_or_append(row, csv_tempo)
+    model_labels <- c(model_labels, "Tempo-Tracking")
+    stats_matrix <- rbind(stats_matrix, stats)
+  }
+}
+
+ref_tempo <- read.csv(csv_tempo)
+```
+
+### State-Dependent
+
+```{r}
+csv_state <- "ref_tables/ref_state.csv"
+
+# --- State-Dependent ---
+for (i in 1:n_sim) {
+  lambda_active <- runif(1, 0.5, 3.0)
+  p_on          <- runif(1, 0.005, 0.1)
+  p_off         <- runif(1, 0.001, 0.02)
+
+  sim <- simulate_state_dependent(
+    duration = dur,
+    lambda_active = lambda_active,
+    lambda_listening = 0.05, lambda_refractory = 0.001,
+    p_active_to_listening_base = p_off,
+    p_listening_to_active_base = p_on,
+    p_active_to_listening_partner = 0.3,
+    p_listening_to_active_partner = 0.005,
+    refrac_dur = 0.3, partner_window = 0.5,
+    d_call = 0.2, duration_noise_sd = 0.1, dt = 0.01
+  )
+  stats <- compute_8_stats(sim$voc_times_1, sim$voc_times_2)
+
+  if (!any(is.na(stats))) {
+    row <- data.frame(
+      lambda_active=lambda_active, p_on=p_on, p_off=p_off,
+      s1=stats[1], s2=stats[2], s3=stats[3], s4=stats[4],
+      s5=stats[5], s6=stats[6], s7=stats[7], s8=stats[8]
+    )
+    write_or_append(row, csv_state)
+    model_labels <- c(model_labels, "State-Dependent")
+    stats_matrix <- rbind(stats_matrix, stats)
+  }
+}
+
+ref_state <- read.csv(csv_state)
+```
+
+## Step 3: Train random forest (abcrf)
+
+```{r}
+colnames(stats_matrix) <- stat_names
+
+ref_table <- data.frame(model = as.factor(model_labels), stats_matrix)
+
+model_rf <- abcrf(model ~ ., data = ref_table, ntree = 500, paral = TRUE) # predict model identity from all 8 summary statistics
+
+print(model_rf$model.rf$confusion.matrix)
+cat("Out-of-bag error rate:", round(model_rf$prior.err, 3), "\n")
+```
+
+## Step 4: Model selection based on "observed" data
+
+```{r}
+# The near-perfect classification here is validation only (since datasets are simulated); 
+# the real rest will be applying this to observed data where the generative mechanism is unknown.
+obs_event_df <- as.data.frame(t(obs_event)); colnames(obs_event_df) <- stat_names
+obs_tempo_df <- as.data.frame(t(obs_tempo)); colnames(obs_tempo_df) <- stat_names
+obs_state_df <- as.data.frame(t(obs_state)); colnames(obs_state_df) <- stat_names
+
+pred_event <- predict(model_rf, obs=obs_event_df, training=ref_table)
+pred_tempo <- predict(model_rf, obs=obs_tempo_df, training=ref_table)
+pred_state <- predict(model_rf, obs=obs_state_df, training=ref_table)
+
+# Extract variable importance, dropping LD1/LD2:
+imp <- model_rf$model.rf$variable.importance %>%
+  tibble::enframe() %>%
+  filter(!name %in% c("LD1", "LD2")) %>%
+  tibble::deframe()
+
+print(round(sort(imp, decreasing=TRUE), 3))
+```
+
+## Step 5: Find closest reference simulations = approximate posterior
+
+```{r}
+# Rejection ABC: keep the n_best simulations whose summary statistics are closest
+# to the observed data (Euclidean Distance) — their parameters form the approximate posterior.
+
+stat_cols <- paste0("s", 1:8)
+n_best    <- 10
+
+# Event model on each dataset
+best_event_on_event <- ref_event[order(compute_dist(ref_event[,stat_cols], obs_event))[1:n_best], ]
+best_event_on_tempo <- ref_event[order(compute_dist(ref_event[,stat_cols], obs_tempo))[1:n_best], ]
+best_event_on_state <- ref_event[order(compute_dist(ref_event[,stat_cols], obs_state))[1:n_best], ]
+
+# Tempo model on each dataset
+best_tempo_on_event <- ref_tempo[order(compute_dist(ref_tempo[,stat_cols], obs_event))[1:n_best], ]
+best_tempo_on_tempo <- ref_tempo[order(compute_dist(ref_tempo[,stat_cols], obs_tempo))[1:n_best], ]
+best_tempo_on_state <- ref_tempo[order(compute_dist(ref_tempo[,stat_cols], obs_state))[1:n_best], ]
+
+# State model on each dataset
+best_state_on_event <- ref_state[order(compute_dist(ref_state[,stat_cols], obs_event))[1:n_best], ]
+best_state_on_tempo <- ref_state[order(compute_dist(ref_state[,stat_cols], obs_tempo))[1:n_best], ]
+best_state_on_state <- ref_state[order(compute_dist(ref_state[,stat_cols], obs_state))[1:n_best], ]
+```
+
+## Step 6: Posterior predictive ICI simulations
+
+```{r}
+### Resimulate from the closest parameter sets
+n_ppc <- 10
+
+# Row 1: Event data — all three models
+ppc_event_event <- simulate_ici_event(best_event_on_event, x_upper=5)
+ppc_tempo_event <- simulate_ici_tempo(best_tempo_on_event, x_upper=5)
+ppc_state_event <- simulate_ici_state(best_state_on_event, x_upper=5)
+
+# Row 2: Tempo data — all three models
+ppc_event_tempo <- simulate_ici_event(best_event_on_tempo, x_upper=2)
+ppc_tempo_tempo <- simulate_ici_tempo(best_tempo_on_tempo, x_upper=2)
+ppc_state_tempo <- simulate_ici_state(best_state_on_tempo, x_upper=2)
+
+# Row 3: State data — all three models
+ppc_event_state <- simulate_ici_event(best_event_on_state, x_upper=8)
+ppc_tempo_state <- simulate_ici_tempo(best_tempo_on_state, x_upper=8)
+ppc_state_state <- simulate_ici_state(best_state_on_state, x_upper=8)
+```
+
+## Step 7: Plot posterior predictive band + observed density
+
+```{r}
+# Diagonal panels (correct model) shown with full color
+# Off-diagonal panels (wrong model) shown with muted color
+
+# Row 1: Event data observed
+p11 <- make_ppc_panel(ppc_event_event, sim1$voc_times_1, sim1$voc_times_2,
+                      col_event, "Event model | Event data", 5, TRUE,
+                      show_y = F)
+
+p12 <- make_ppc_panel(ppc_tempo_event, sim1$voc_times_1, sim1$voc_times_2,
+                      col_tempo, "Tempo model | Event data", 5, FALSE)
+p13 <- make_ppc_panel(ppc_state_event, sim1$voc_times_1, sim1$voc_times_2,
+                      col_state, "State model | Event data", 5, FALSE)
+
+# Row 2: Tempo data observed
+p21 <- make_ppc_panel(ppc_event_tempo, sim2$voc_times_1, sim2$voc_times_2,
+                      col_event, "Event model | Tempo data", 2, FALSE)
+p22 <- make_ppc_panel(ppc_tempo_tempo, sim2$voc_times_1, sim2$voc_times_2,
+                      col_tempo, "Tempo model | Tempo data", 2, TRUE,
+                      show_y = F)
+p23 <- make_ppc_panel(ppc_state_tempo, sim2$voc_times_1, sim2$voc_times_2,
+                      col_state, "State model | Tempo data", 2, FALSE)
+
+# Row 3: State data observed
+p31 <- make_ppc_panel(ppc_event_state, sim3$voc_times_1, sim3$voc_times_2,
+                      col_event, "Event model | State data", 8, FALSE,
+                      show_y = T)
+p32 <- make_ppc_panel(ppc_tempo_state, sim3$voc_times_1, sim3$voc_times_2,
+                      col_tempo, "Tempo model | State data", 8, FALSE,
+                      show_y = T)
+p33 <- make_ppc_panel(ppc_state_state, sim3$voc_times_1, sim3$voc_times_2,
+                      col_state, "State model | State data", 8, TRUE,
+                      show_y = T)
+```
+
+## Step 8: Assemble 3x3 grid with row and column labels
+
+```{r}
+col_labels <- c("Event-Triggered",
+                "Tempo-Tracking",
+                "State-Dependent")
+
+# Add column headers
+header <- plot_grid(
+  ggplot() + annotate("text", x=0.5, y=0.5, label=col_labels[1],
+                      fontface="bold", size=13, color=col_event) +
+    theme_void(),
+  ggplot() + annotate("text", x=0.5, y=0.5, label=col_labels[2],
+                      fontface="bold", size=13, color=col_tempo) +
+    theme_void(),
+  ggplot() + annotate("text", x=0.5, y=0.5, label=col_labels[3],
+                      fontface="bold", size=13, color=col_state) +
+    theme_void(),
+  ncol=3
+)
+
+row1 <- plot_grid(p11, NULL, p12, NULL, p13, NULL, ncol=6, rel_widths = c(0.5, 0.05, 0.5, 0.05, 0.5, 0.05))
+row2 <- plot_grid(p21, NULL, p22, NULL, p23, NULL, ncol=6, rel_widths = c(0.5, 0.05, 0.5, 0.05, 0.5, 0.05))
+row3 <- plot_grid(p31, NULL, p32, NULL, p33, NULL, ncol=6, rel_widths = c(0.5, 0.05, 0.5, 0.05, 0.5, 0.05))
+
+full_fig <- plot_grid(row1, NULL, row2, NULL, row3, ncol=1, rel_heights=c(1, 0.1, 1, 0.1, 1))
+```
+
+## Mechanistic Assumption and Diagnostic Predictions (Figure 3)
+
+### Event-Triggered (Inhibitory Reset)
+
+```{r}
+# Three model "cards" side by side with full equations,
+# mechanistic description, and diagnostic predictions
+
+p_event <- make_model_card(
+  color    = col_event,
+  title    = "Event-Triggered",
+  subtitle = "Discrete stimulus-triggered corrections\nto an endogenous oscillator",
+  equations = list(
+    TeX("$\\phi_i(t^+) = \\phi_i(t^-) + \\rho \\cdot (\\pi - \\phi_i(t^-))$"),
+    TeX("when partner $j$ calls at time $t$"),
+    TeX("$ICI \\sim N(T,\\, \\sigma^2)$ or $N(2(d + \\rho T),\\, \\sigma^2)$"),
+    TeX("$\\dot{\\phi}_i = 2\\pi / T_i + \\epsilon(\\bar{T} - T_i)$")
+  ),
+  eq_y = c(0.7, 0.62, 0.53, 0.44),
+  predictions = list(
+    "Inter-Call Intervals"    = "Bimodal",
+    "Phase Persistence"   = "Negative",
+    "Phase Variance"      = "High (jitter)",
+    "Convergence"         = "Discrete resets"
+  )
+)
+```
+
+### Tempo-Tracking (Kuramoto Coupled Oscillator)
+
+```{r}
+p_tempo <- make_model_card(
+  color    = col_tempo,
+  title    = "Tempo-Tracking",
+  subtitle = "Continuous mutual adjustment\nof calling frequencies",
+  equations = list(
+    TeX("$\\dot{\\phi}_i = \\omega_i + K \\cdot \\sin(\\phi_j - \\phi_i)$"),
+    TeX("$\\dot{\\omega}_i = \\epsilon \\cdot (\\bar{\\omega} - \\omega_i)$"),
+    TeX("$\\phi^* = \\pi$ (antiphase equilibrium, $K < 0$)"),
+    TeX("$ICI \\sim N(1/\\omega^*,\\, \\sigma^2_{\\phi})$")
+  ),
+  eq_y = c(0.7, 0.61, 0.52, 0.43),
+  predictions = list(
+    "Inter-Call Intervals"    = "Unimodal, tight",
+    "Phase Persistence"   = "Positive",
+    "Phase variance"      = "Low (converged)",
+    "Convergence"         = "Smooth, gradual"
+  )
+)
+```
+
+### State-Dependent
+
+```{r}
+p_state <- make_model_card(
+  color    = col_state,
+  title    = "State-Dependent",
+  subtitle = "Probabilistic behavioral gating\nacross internal states",
+  equations = list(
+    TeX("$S_i(t) \\in \\{active,\\; listening,\\; refractory\\}$"),
+    TeX("$P(call \\,|\\, S_i = active) = \\lambda_{active} \\cdot dt$"),
+    TeX("$P(S_i: active \\to listening \\,|\\, j\\; calls) = p_{off}$"),
+    TeX("$ICI \\sim Exp(\\lambda_{active})$ within bout")
+  ),
+  eq_y = c(0.7, 0.61, 0.52, 0.43),
+  predictions = list(
+    "Inter-Call Intervals"    = "Exponential",
+    "Phase Persistence"   = "Near zero",
+    "Phase variance"      = "High (scatter)",
+    "Convergence"         = "None (stochastic)"
+  )
+)
+```
+
+### Assemble cards into panel
+
+```{r}
+p_cards <- plot_grid(p_event, p_tempo, p_state,
+                   ncol=3, rel_widths=c(1, 1, 1))
+```
+
+## From Statistical Fingerprints to Model Inference (Figure 3)
+
+### Row 1: Condensed fingerprint panels 
+
+```{r}
+# Rebuild ICI panels at smaller size
+ici1_mini <- make_ici(sim1, bins = 30, toggle_x = " ",
+                      x_lower_lim = 0, x_upper = 4, breaks = 1) +
+  theme(axis.title.y = element_text(size = 12, color = "black", angle = 90)) +
+  labs(y = "Density")
+
+ici2_mini <- make_ici(sim2, bins = 20, x_upper_lim = 1.5,
+                      x_lower_lim = 0.5, breaks = 0.5) +
+  labs(title = " ")
+
+ici3_mini <- make_ici(sim3, bins = 30, toggle_x = " ",
+                      breaks = 1, x_upper = 10) +
+  labs(title = " ")
+
+diag1_mini <- make_phase_dynamics_m1(sim1, window) +
+  labs(title = " ") +
+  theme(axis.title.y = element_text(size = 12, color = "black", angle = 90),
+        panel.grid.major.y = element_blank()) +
+  labs(y = "Phase")
+
+diag2_mini <- make_phase_dynamics_m2(sim2, window) +
+  labs(title = " ") + 
+  theme(axis.text.y = element_blank(),
+        panel.grid.major.y = element_blank()) +
+  labs(x = "Time (s)")
+
+diag3_mini <- make_phase_dynamics_m3(sim3, window) +
+  labs(title = " ") +
+  theme(axis.text.y = element_blank(),
+        panel.grid.major.y = element_blank())
+
+# Stack ICI + phase per model vertically
+col_event_panel <- plot_grid(ici1_mini, diag1_mini,
+                             ncol = 1, rel_heights = c(1, 1))
+col_tempo_panel <- plot_grid(ici2_mini, diag2_mini,
+                             ncol = 1, rel_heights = c(1, 1))
+col_state_panel <- plot_grid(ici3_mini, diag3_mini,
+                             ncol = 1, rel_heights = c(1, 1))
+
+# Make coloured headers:
+headers <- plot_grid(
+  make_colored_col_header("Event-Triggered",  col_event),
+  make_colored_col_header("Tempo-Tracking",   col_tempo),
+  make_colored_col_header("State-Dependent",  col_state),
+  ncol = 3
+)
+
+# Stack ICI + phase per model horizontally
+row1_panels <- plot_grid(col_event_panel, 
+                         col_tempo_panel, 
+                         col_state_panel,
+                         ncol = 3, nrow = 1)
+
+diagnostic_sigs <- make_panel_title("i) Diagnostic Signatures", size = 4)
+
+row1 <- plot_grid(
+  diagnostic_sigs,
+  headers,
+  row1_panels,
+  ncol = 1,
+  rel_heights = c(0.08, 0.07, 0.93)
+)
+```
+
+
+### Row 2, scatter plots, lower-left: 
+
+```{r}
+set.seed(42)
+
+ref_sample <- ref_table[
+  c(sample(which(ref_table$model == "Event-Triggered"), 400),
+    sample(which(ref_table$model == "Tempo-Tracking"),  400),
+    sample(which(ref_table$model == "State-Dependent"), 400)), ]
+
+# Observed points for all 8 statistics
+obs_df <- data.frame(
+  model      = c("Event-Triggered", "Tempo-Tracking", "State-Dependent"),
+  mean_ici   = c(obs_event[1], obs_tempo[1], obs_state[1]),
+  sd_ici     = c(obs_event[2], obs_tempo[2], obs_state[2]),
+  bimod      = c(obs_event[3], obs_tempo[3], obs_state[3]),
+  prop_short = c(obs_event[4], obs_tempo[4], obs_state[4]),
+  dip        = c(obs_event[5], obs_tempo[5], obs_state[5]),
+  phase_dist = c(obs_event[6], obs_tempo[6], obs_state[6]),
+  phase_var  = c(obs_event[7], obs_tempo[7], obs_state[7]),
+  phase_acf1 = c(obs_event[8], obs_tempo[8], obs_state[8])
+)
+
+d1 <- make_scatter("prop_short", "phase_acf1",
+                   "Prop. Short Intervals", "Phase Persistence")
+
+d2 <- make_scatter("sd_ici", "phase_dist",
+                   "Interval Variability", "Phase Distance")
+
+d3 <- make_scatter("phase_var", "bimod",
+                   "Phase variance", "Skewness-Kurtosis")
+
+d4 <- make_scatter("dip", "mean_ici",
+                   "Dip statistic", "Mean Interval",
+                   show_legend = TRUE)
+
+# Extract shared legend from d4
+shared_legend <- get_legend(d4 +
+                              theme(legend.position = "bottom",
+                                    legend.text = element_text(size = 15),
+                                    legend.key.size = unit(1.2, "lines")))
+
+scatters_2x2a <- plot_grid(
+  d1 + theme(legend.position = "none"),
+  NULL,
+  d2 + theme(legend.position = "none"),
+  ncol = 3,
+  rel_widths = c(1, 0.05, 1)
+)
+
+scatters_2x2b <- plot_grid(
+  d3 + theme(legend.position = "none"),
+  NULL,
+  d4 + theme(legend.position = "none"),
+  ncol = 3,
+  rel_widths = c(1, 0.05, 1)
+)
+
+scatters_2x2 <- plot_grid(scatters_2x2a, 
+                          NULL,
+                          scatters_2x2b,
+                          nrow = 3,
+                          rel_heights = c(1, 0.2, 1))
+
+
+panel_D_title <- make_panel_title("ii) Parameters Cluster by Mechanism", size = 4)
+
+panel_D <- plot_grid(
+  panel_D_title,
+  scatters_2x2,
+  shared_legend,
+  ncol = 1,
+  rel_heights = c(0.05, 0.93, 0.08)
+)
+
+panel_D
+```
+
+### Row 2, variable importance, lower-right: 
+
+```{r}
+imp_df <- data.frame(
+  statistic  = names(imp),
+  importance = as.numeric(imp)
+)
+
+imp_df <- imp_df[order(imp_df$importance, decreasing = FALSE), ]
+
+imp_df$label <- dplyr::recode(imp_df$statistic,
+                              "mean_ici"   = "Mean Interval",
+                              "sd_ici"     = "Interval Variability",
+                              "bimod"      = "Skewness-Kurtosis",
+                              "prop_short" = "Prop. Short Intervals",
+                              "dip"        = "Dip Statistic",
+                              "phase_dist" = "Phase Distance",
+                              "phase_var"  = "Phase Variance",
+                              "phase_acf1" = "Phase Persistence")
+
+imp_df$label <- factor(imp_df$label, levels = imp_df$label)
+
+imp_df$stat_type <- dplyr::recode(imp_df$statistic,
+                                  "mean_ici"   = "Inter-Call Interval",
+                                  "sd_ici"     = "Inter-Call Interval",
+                                  "bimod"      = "Inter-Call Interval",
+                                  "prop_short" = "Inter-Call Interval",
+                                  "dip"        = "Inter-Call Interval",
+                                  "phase_dist" = "Phase",
+                                  "phase_var"  = "Phase",
+                                  "phase_acf1" = "Phase"
+)
+
+imp_df$stat_type <- factor(imp_df$stat_type, levels = c("Inter-Call Interval", "Phase"))
+
+p_importance <- ggplot(imp_df,
+                       aes(x = label, y = importance, color = stat_type)) +
+  geom_segment(aes(x = label, xend = label, y = 0, yend = importance),
+               linewidth = 0.9, alpha = 0.9) +
+  geom_point(size = 5) +
+  scale_color_manual(
+    values = c("Inter-Call Interval" = "#F9A825",
+               "Phase" = "#546E7A"),
+    name   = "Dimension Type"
+    
+  ) +
+  coord_flip() +
+  labs(x = NULL, y = "Variable Importance") +
+  theme_classic(base_size = 10) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 20, hjust = 0.5, color = "black"),
+    axis.text.x  = element_text(size = 15, color = "black"),
+    axis.text.y  = element_text(size = 15, color = "black"),
+    axis.title.y = element_text(size = 15, color = "black"),
+    axis.title.x = element_text(size = 15, color = "black", margin = margin(t = 15)),
+    panel.grid   = element_blank(),
+    legend.position = c(0.9, 0.2),
+    legend.title = element_text(size = 15, face = "bold"),  # Bigger title
+    legend.text = element_text(size = 15),  # Bigger numbers
+  )
+
+panel_Diii_title <- make_panel_title("iii) Parameters Driving Inference", size = 4)
+
+p_importance_final <- plot_grid(
+  panel_Diii_title,
+  p_importance,
+  ncol = 1,
+  rel_heights = c(0.05, 0.93)
+)
+
+p_importance_final
+
+```
+
+### Assemble Row 2
+
+```{r}
+row2 <- plot_grid(panel_D, NULL, p_importance_final,
+                  ncol = 3, rel_widths = c(1.5, 0.1, 1.0))
+```
+
+## Full Panel B:
+
+```{r}
+fig2 <- plot_grid(
+  row1,
+  NULL,
+  row2,
+  ncol = 1,
+  rel_heights = c(0.5, 0.05, 1)
+)
+
+print(fig2)
+```
+
+# Assemble Full Figure 3
+
+```{r}
+main_title_cards <- make_panel_title("A) Mechanistic Assumptions and Diagnostic Predictions")
+cards_row <- plot_grid(p_event, p_tempo, p_state, ncol=3, rel_widths=c(1,1,1))
+
+row1_w_titles <- plot_grid(
+  main_title_cards, 
+  cards_row, 
+  ncol = 1,
+  rel_heights = c(0.08, 0.93))
+
+p_B_ABC <- make_panel_title("B) From Statistical Fingerprints to Model Inference")
+p_C_Model <- make_panel_title("C) Cross-Model Predictive Fit Under ABC")
+row2_titles <- plot_grid(p_B_ABC, NULL, p_C_Model, nrow = 1, rel_widths = c(0.5, 0.05, 0.5))
+
+ABC_part <- cowplot::plot_grid(fig2, NULL, full_fig, 
+                               rel_widths = c(0.5, 0.1, 0.5),
+                               nrow = 1)
+
+row2_w_titles <- plot_grid(
+          row2_titles, 
+          ABC_part, 
+          ncol = 1,
+          rel_heights = c(0.05, 0.93))
+
+final_fig <- plot_grid(row1_w_titles, NULL, row2_w_titles,
+          ncol = 1, rel_heights = c(0.4, 0.05, 0.9))
+
+#ggsave(plot = final_fig, file = 'final_fig.pdf', height = 19.5, width = 26)
+#ggsave(plot = final_fig, file = 'final_fig.png', height = 19.5, width = 26)
+#ggsave(plot = final_fig, file = 'final_fig.tiff', height = 19.5, width = 26)
+```
