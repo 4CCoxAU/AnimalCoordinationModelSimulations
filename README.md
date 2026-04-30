@@ -1,9 +1,9 @@
 # Animal Coordination Model Simulations
 
 **Companion code for:**
-> Cox, C., Ravignani, A., Sørensen, S., Zamm, A., Jensen, F., Cristia, A., & Fusaroli, R.
+> Cox, C., Ravignani, A., Sørensen, S., Zamm, A., Jensen, F., Bryant, G., Cristia, A., & Fusaroli, R.
 > *Breaking the Taxonomic Barrier: A Cross-Species Systematic Review of Formal Models of Coordination*
-> Philosophical Transactions of the Royal Society B
+> Preprint, PsyArxiv.
 
 ---
 
@@ -151,7 +151,7 @@ If you use this code, please cite:
 ```
 Cox, C., Ravignani, A., Sørensen, S., Zamm, A., Jensen, F., Cristia, A., & Fusaroli, R. (in press).
 Breaking the Taxonomic Barrier: A Cross-Species Systematic Review of Formal Models of Coordination.
-Philosophical Transactions of the Royal Society B.
+PsyArxiv.
 ```
 
 ---

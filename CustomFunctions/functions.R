@@ -424,7 +424,7 @@ simulate_ici_event <- function(best, n=n_ppc, x_upper=5) {
   out <- list()
   for (i in 1:n) {
     sim <- simulate_event_triggered(
-      duration=1000, T1=best$T[i], T2=best$T[i],
+      duration=500, T1=best$T[i], T2=best$T[i],
       rho=best$rho[i], d_call=best$d_call[i],
       noise_sd=best$noise_sd[i], duration_noise_sd=best$noise_sd[i]
     )
@@ -438,8 +438,8 @@ simulate_ici_tempo <- function(best, n=n_ppc, x_upper=3) {
   out <- list()
   for (i in 1:n) {
     sim <- simulate_coupled_oscillator(
-      duration=50, freq1_init=best$freq1[i], freq2_init=best$freq2[i],
-      K=-best$K[i], epsilon=best$epsilon[i], dt=0.02,
+      duration=1000, freq1_init=best$freq1[i], freq2_init=best$freq2[i],
+      K=-best$K[i], epsilon=best$epsilon[i], dt=0.01,
       phase_noise_sd=best$phase_noise_sd[i], freq_noise_sd=0.001,
       d_call=0.2, duration_noise_sd=0.1, ici_noise_sd=0.05,
       initial_phase_diff=runif(1,0,pi)
@@ -506,7 +506,7 @@ make_ppc_panel <- function(ppc_list, obs_voc1, obs_voc2,
                 fill=color, alpha=alpha_ribbon) +
     #geom_line(data=df_band, aes(x=x, y=med), color=color, linewidth=1.0, alpha=alpha_line) +
     #geom_point(data=df_band, aes(x=x, y=med), color=color, linewidth=1.0, alpha=alpha_line) +
-    geom_smooth(data=df_band, aes(x=x, y=med), method="loess", span=0.1, color=color, linewidth=width_line, se=FALSE, alpha = alpha_line) +
+    geom_smooth(data=df_band, aes(x=x, y=med), method="loess", span=0.22, color=color, linewidth=width_line, se=FALSE, alpha = alpha_line) +
     geom_density(data=data.frame(ici=obs_ici), aes(x=ici), color=col_dark, linewidth=width_line, linetype="dashed", alpha = alpha_line) +
     #annotate("text", x=x_upper*0.98, y=Inf, label=if(is_correct) "\u2713 correct" else "\u2717 wrong", hjust=1, vjust=1.5, size=5, fontface="bold", color=if(is_correct) color else "grey50") +
     labs(x="ICI (s)", y="Density", title=title) +

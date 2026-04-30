@@ -32,11 +32,11 @@ source(here("CustomFunctions/functions.R"))
 # Run simulations
 
 ```{r}
-set.seed(23)
+set.seed(24)
 
 sim1 <- simulate_event_triggered(
-  duration = 1000, T1 = 1.0, T2 = 1.0,
-  rho = 0.75, d_call = 0.2, noise_sd = 0.2, duration_noise_sd = 0.1)
+  duration = 300, T1 = 1.0, T2 = 1.0,
+  rho = 0.65, d_call = 0.2, noise_sd = 0.2, duration_noise_sd = 0.1)
 
 sim2 <- simulate_coupled_oscillator(
   duration = 1000, freq1_init = 0.8, freq2_init = 1.2,
@@ -238,7 +238,7 @@ print(round(df_obs, 3))
 # For each model: sample random parameters from prior, simulate,
 # compute statistics, store parameters + statistics
 
-n_sim <- 500   # simulations per model
+n_sim <- 300   # simulations per model
 dur   <- 1000    # simulation duration in seconds
 
 model_labels <- character(0) # storage for abcrf, model labels
@@ -252,40 +252,8 @@ csv_event <- "ref_tables/ref_event.csv"
 
 # --- Event-Triggered ---
 for (i in 1:n_sim) {
-  T      <- runif(1, 0.5, 2.0)
-  rho    <- runif(1, 0.3, 0.95)
-  d_call <- runif(1, 0.05, 0.5)
-
-  # Theory-informed prior from Greenfield (1994):
-  # skip parameter combinations where the two ICI modes overlap,
-  # and cap noise so bimodality is preserved in the output.
-  mode_gap <- 2 * (d_call + rho * T) - T
-  if (mode_gap < 0.2) next
-  noise_sd <- runif(1, 0.01, mode_gap / 4)
-
-  sim <- simulate_event_triggered(
-    duration = dur, T1 = T, T2 = T,
-    rho = rho, d_call = d_call,
-    noise_sd = noise_sd, duration_noise_sd = noise_sd
-  )
-  stats <- compute_8_stats(sim$voc_times_1, sim$voc_times_2)
-
-  if (!any(is.na(stats))) {
-    row <- data.frame(
-      T=T, rho=rho, d_call=d_call, noise_sd=noise_sd,
-      s1=stats[1], s2=stats[2], s3=stats[3], s4=stats[4],
-      s5=stats[5], s6=stats[6], s7=stats[7], s8=stats[8]
-    )
-    write_or_append(row, csv_event)
-    model_labels <- c(model_labels, "Event-Triggered")
-    stats_matrix <- rbind(stats_matrix, stats)
-  }
-}
-
-# --- Event-Triggered ---
-for (i in 1:n_sim) {
   T        <- runif(1, 0.5, 2.0)
-  rho      <- runif(1, 0.3, 0.95)
+  rho      <- runif(1, 0.3, 0.9)
   d_call   <- runif(1, 0.05, 0.5)
   noise_sd <- runif(1, 0.01, 0.15)
 
@@ -430,7 +398,7 @@ print(round(sort(imp, decreasing=TRUE), 3))
 # to the observed data (Euclidean Distance) — their parameters form the approximate posterior.
 
 stat_cols <- paste0("s", 1:8)
-n_best    <- 10
+n_best    <- 50
 
 # Event model on each dataset
 best_event_on_event <- ref_event[order(compute_dist(ref_event[,stat_cols], obs_event))[1:n_best], ]
@@ -477,8 +445,11 @@ ppc_state_state <- simulate_ici_state(best_state_on_state, x_upper=8)
 # Off-diagonal panels (wrong model) shown with muted color
 
 # Row 1: Event data observed
+n_ppc <- 10
+
+# Row 1: Event data — all three models
 p11 <- make_ppc_panel(ppc_event_event, sim1$voc_times_1, sim1$voc_times_2,
-                      col_event, "Event model | Event data", 5, TRUE,
+                      col_event, "Event model | Event data", 3, TRUE,
                       show_y = F)
 
 p12 <- make_ppc_panel(ppc_tempo_event, sim1$voc_times_1, sim1$voc_times_2,
@@ -489,9 +460,11 @@ p13 <- make_ppc_panel(ppc_state_event, sim1$voc_times_1, sim1$voc_times_2,
 # Row 2: Tempo data observed
 p21 <- make_ppc_panel(ppc_event_tempo, sim2$voc_times_1, sim2$voc_times_2,
                       col_event, "Event model | Tempo data", 2, FALSE)
+
 p22 <- make_ppc_panel(ppc_tempo_tempo, sim2$voc_times_1, sim2$voc_times_2,
-                      col_tempo, "Tempo model | Tempo data", 2, TRUE,
+                      col_tempo, "Tempo model | Tempo data", 5, TRUE,
                       show_y = F)
+
 p23 <- make_ppc_panel(ppc_state_tempo, sim2$voc_times_1, sim2$voc_times_2,
                       col_state, "State model | Tempo data", 2, FALSE)
 
@@ -533,6 +506,7 @@ row2 <- plot_grid(p21, NULL, p22, NULL, p23, NULL, ncol=6, rel_widths = c(0.5, 0
 row3 <- plot_grid(p31, NULL, p32, NULL, p33, NULL, ncol=6, rel_widths = c(0.5, 0.05, 0.5, 0.05, 0.5, 0.05))
 
 full_fig <- plot_grid(row1, NULL, row2, NULL, row3, ncol=1, rel_heights=c(1, 0.1, 1, 0.1, 1))
+full_fig
 ```
 
 ## Mechanistic Assumption and Diagnostic Predictions (Figure 3)
@@ -692,9 +666,9 @@ row1 <- plot_grid(
 set.seed(42)
 
 ref_sample <- ref_table[
-  c(sample(which(ref_table$model == "Event-Triggered"), 400),
-    sample(which(ref_table$model == "Tempo-Tracking"),  400),
-    sample(which(ref_table$model == "State-Dependent"), 400)), ]
+  c(sample(which(ref_table$model == "Event-Triggered"), 300),
+    sample(which(ref_table$model == "Tempo-Tracking"),  300),
+    sample(which(ref_table$model == "State-Dependent"), 300)), ]
 
 # Observed points for all 8 statistics
 obs_df <- data.frame(
